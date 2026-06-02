@@ -1,0 +1,19 @@
+{
+  "name": "predict-keeper",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@mysten/deepbook-v3": "^1.2.1",
+    "@mysten/sui": "^2.5.0",
+    "esbuild": "^0.27.2",
+    "pino": "^9.5.0",
+    "tsx": "^4.21.0"
+  }
+}
