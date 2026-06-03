@@ -1,7 +1,9 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { client, getKeeperSigner } from './sui';
+import { getClient, getSigner } from './utils';
 import { CONFIG } from './config';
 import { RedeemablePosition } from './scanner';
+
+const client = getClient(CONFIG.NETWORK);
 
 export async function executeRedeemBatch(positions: RedeemablePosition[]) {
     if (positions.length === 0) return;
@@ -37,7 +39,7 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
     }
 
     try {
-        const signer = getKeeperSigner();
+        const signer = getSigner();
         const result = await client.signAndExecuteTransaction({
             transaction: tx,
             signer,

@@ -1,4 +1,4 @@
-import { getKeeperSigner } from './sui';
+import { getSigner } from './utils';
 import { CONFIG } from './config';
 import { findRedeemablePositions } from './scanner';
 import { executeRedeemBatch } from './executor';
@@ -8,7 +8,7 @@ async function main() {
     console.log(`📡 网络: ${CONFIG.NETWORK}`);
     
     // 启动时初始化 Signer 并打印地址
-    const signer = getKeeperSigner();
+    const signer = getSigner();
     const keeperAddress = signer.toSuiAddress();
     console.log(`💼 Keeper 地址: ${keeperAddress}`);
     console.log(`-----------------------------------`);
