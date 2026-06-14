@@ -18,87 +18,53 @@ export interface RedeemablePosition {
 }
 
 export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
-    console.log("=== 开始扫描代领机会 ===");
-    
-    // 1. 找出所有已结算的 Oracle (通过查询最近的 OracleSettled 事件)
-    // 官方在 oracle.move 里定义了 event::emit(OracleSettled { ... })
-    const settledEvents = await client.queryEvents({
-        query: { MoveEventType: `${CONFIG.PREDICT_PACKAGE_ID}::oracle::OracleSettled` },
-        limit: 20
-    });
-    
-    const settledOracleIds = new Set(settledEvents.data.map(e => (e.parsedJson as any).oracle_id));
-    if (settledOracleIds.size === 0) {
-        console.log("当前测试网上没有发现已结算的 Oracle。");
-        return [];
-    }
-    console.log(`发现已结算的 Oracle 数量: ${settledOracleIds.size}`);
-
-    // 2. 直接查询全网的 PositionMinted 事件，在内存中聚合成用户的活跃头寸
-    // 这就相当于一个轻量级、临时的方案 A
-    const mintEvents = await client.queryEvents({
-        query: { MoveEventType: `${CONFIG.PREDICT_PACKAGE_ID}::predict::PositionMinted` },
-        limit: 100 // 调大这个值以获取更多历史
-    });
-
-    const redeemEvents = await client.queryEvents({
-        query: { MoveEventType: `${CONFIG.PREDICT_PACKAGE_ID}::predict::PositionRedeemed` },
-        limit: 100
-    });
-
-    // 内存账本： "managerId_oracleId_strike_direction" -> quantity
-    const ledger = new Map<string, bigint>();
-    // 临时记录对应的原始数据
-    const keyDataMap = new Map<string, any>();
-
-    // 累计 Mint 的头寸
-    for (const event of mintEvents.data) {
-        const json = event.parsedJson as any;
-        const key = `${json.manager_id}_${json.oracle_id}_${json.strike}_${json.is_up ? 'up' : 'down'}`;
-        const current = ledger.get(key) || 0n;
-        ledger.set(key, current + BigInt(json.quantity));
-        keyDataMap.set(key, {
-            managerId: json.manager_id,
-            oracleId: json.oracle_id,
-            expiry: BigInt(json.expiry),
-            strike: BigInt(json.strike),
-            isUp: json.is_up
-        });
-    }
-
-    // 扣除已 Redeem 的头寸
-    for (const event of redeemEvents.data) {
-        const json = event.parsedJson as any;
-        const key = `${json.manager_id}_${json.oracle_id}_${json.strike}_${json.is_up ? 'up' : 'down'}`;
-        const current = ledger.get(key) || 0n;
-        if (current > 0n) {
-            ledger.set(key, current - BigInt(json.quantity));
-        }
-    }
-
-    // 3. 筛选出：属于“已结算 Oracle 列表” 且 “数量 > 0” 的所有内存账本记录
+    console.log("=== 通过官方 Indexer API 扫描机会 ===");
     const redeemable: RedeemablePosition[] = [];
 
-    for (const [key, qty] of ledger.entries()) {
-        if (qty > 0n) {
-            const info = keyDataMap.get(key);
-            if (settledOracleIds.has(info.oracleId)) {
-                redeemable.push({
-                    managerId: info.managerId,
-                    oracleId: info.oracleId,
-                    marketKey: {
-                        oracle_id: info.oracleId,
-                        expiry: info.expiry,
-                        strike: info.strike,
-                        is_up: info.isUp
-                    },
-                    quantity: qty
-                });
+    // 假设官方 API 地址是 http://api.testnet.predict...
+    const API_BASE = 'http://localhost:8080/api'; // 根据实际配置
+
+    try {
+        // 1. 直接向 API 请求所有已经 Settled 的 Oracle 列表
+        const settledResponse = await fetch(`${API_BASE}/oracles/settled`);
+        const settledOracles = await settledResponse.json() as any[];
+        
+        if (settledOracles.length === 0) return [];
+        const settledIds = settledOracles.map(o => o.oracle_id);
+
+        // 2. 拿到所有用户的 Manager 列表 
+        // （你可以通过事件获取所有 managerId，或者直接调 API 查活跃 manager）
+        const managersResponse = await fetch(`${API_BASE}/managers`);
+        const managers = await managersResponse.json() as any[];
+
+        for (const manager of managers) {
+            // 3. 直接调 API 查这个 Manager 的实时持仓聚合
+            // 这个 API 是 Rust 服务在数据库里帮你算好（Mint - Redeemed）之后的净余额！
+            const posResponse = await fetch(`${API_BASE}/managers/${manager.manager_id}/positions`);
+            const positions = await posResponse.json() as any[];
+
+            for (const pos of positions) {
+                // 如果这个仓位属于已结算的 Oracle 且数量大于 0
+                if (settledIds.includes(pos.oracle_id) && BigInt(pos.quantity) > 0n) {
+                    redeemable.push({
+                        managerId: manager.manager_id,
+                        oracleId: pos.oracle_id,
+                        marketKey: {
+                            oracle_id: pos.oracle_id,
+                            expiry: BigInt(pos.expiry),
+                            strike: BigInt(pos.strike),
+                            is_up: pos.is_up
+                        },
+                        quantity: BigInt(pos.quantity)
+                    });
+                }
             }
         }
+    } catch (e) {
+        console.error("通过 API 扫描失败，回退到链上事件扫描...", e);
+        // 如果 API 没部署好或者连不上，可以优雅回退到我们之前写的 `fetchAllNewEvents` 自力更生版本。
     }
 
-    console.log(`扫描完成！发现可代领头寸: ${redeemable.length} 个`);
     return redeemable;
 }
 
