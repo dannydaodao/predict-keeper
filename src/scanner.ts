@@ -18,36 +18,44 @@ export interface RedeemablePosition {
 }
 
 export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
-    console.log("=== 通过官方 Indexer API 扫描机会 ===");
-    const redeemable: RedeemablePosition[] = [];
-
-    // 假设官方 API 地址是 http://api.testnet.predict...
-    const API_BASE = 'http://localhost:8080/api'; // 根据实际配置
+    console.log("=== 正在通过 Predict Server 运行增量扫描 ===");
+    const redeemablePositions: RedeemablePosition[] = [];
 
     try {
-        // 1. 直接向 API 请求所有已经 Settled 的 Oracle 列表
-        const settledResponse = await fetch(`${API_BASE}/oracles/settled`);
-        const settledOracles = await settledResponse.json() as any[];
-        
-        if (settledOracles.length === 0) return [];
-        const settledIds = settledOracles.map(o => o.oracle_id);
+        // 1. 获取该 Predict 盘口下所有的 Oracles
+        const oraclesUrl = `${CONFIG.SERVER_URL}/predicts/${CONFIG.PREDICT_OBJECT_ID}/oracles`;
+        const oracles = await fetch(oraclesUrl).then(res => res.json());
 
-        // 2. 拿到所有用户的 Manager 列表 
-        // （你可以通过事件获取所有 managerId，或者直接调 API 查活跃 manager）
-        const managersResponse = await fetch(`${API_BASE}/managers`);
-        const managers = await managersResponse.json() as any[];
+        // 【增量过滤 1】只寻找：已经结算（settled）且全网还有人没领完（remaining_quantity > 0）的 Oracle！
+        const activeSettledOracles = oracles.filter((oracle: any) => 
+            oracle.status.toLowerCase() === 'settled' && oracle.remaining_quantity > 0
+        );
 
+        if (activeSettledOracles.length === 0) {
+            console.log("当前暂无包含未领取余额的已结算 Oracle，跳过本次轮询。");
+            return [];
+        }
+
+        const activeSettledOracleIds = new Set(activeSettledOracles.map((o: any) => o.oracle_id));
+        console.log(`发现待收割的活跃已结算 Oracle 数量: ${activeSettledOracleIds.size}`);
+
+        // 2. 获取全网所有的 PredictManager 列表
+        const managersUrl = `${CONFIG.SERVER_URL}/managers`;
+        const managers = await fetch(managersUrl).then(res => res.json());
+
+        // 3. 对每个 manager，查询他当前的持仓
         for (const manager of managers) {
-            // 3. 直接调 API 查这个 Manager 的实时持仓聚合
-            // 这个 API 是 Rust 服务在数据库里帮你算好（Mint - Redeemed）之后的净余额！
-            const posResponse = await fetch(`${API_BASE}/managers/${manager.manager_id}/positions`);
-            const positions = await posResponse.json() as any[];
+            const managerId = manager.manager_id;
+            const positionsUrl = `${CONFIG.SERVER_URL}/managers/${managerId}/positions`;
+            const positions = await fetch(positionsUrl).then(res => res.json());
 
             for (const pos of positions) {
-                // 如果这个仓位属于已结算的 Oracle 且数量大于 0
-                if (settledIds.includes(pos.oracle_id) && BigInt(pos.quantity) > 0n) {
-                    redeemable.push({
-                        managerId: manager.manager_id,
+                // 【增量过滤 2】如果该持仓：属于我们需要收割的 Oracle，且用户手里有还未提取的 quantity > 0
+                if (activeSettledOracleIds.has(pos.oracle_id) && BigInt(pos.quantity) > 0n) {
+                    
+                    // 找到了猎物！
+                    redeemablePositions.push({
+                        managerId: managerId,
                         oracleId: pos.oracle_id,
                         marketKey: {
                             oracle_id: pos.oracle_id,
@@ -57,15 +65,18 @@ export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
                         },
                         quantity: BigInt(pos.quantity)
                     });
+                    
+                    console.log(`[发现猎物] 账户 ${managerId} 在 Oracle ${pos.oracle_id} 上有未代领头寸, 数量: ${pos.quantity}`);
                 }
             }
         }
-    } catch (e) {
-        console.error("通过 API 扫描失败，回退到链上事件扫描...", e);
-        // 如果 API 没部署好或者连不上，可以优雅回退到我们之前写的 `fetchAllNewEvents` 自力更生版本。
+
+    } catch (error) {
+        console.error("通过 Predict Server 扫描失败:", error);
     }
 
-    return redeemable;
+    console.log(`=== 扫描结束，共发现可代领头寸: ${redeemablePositions.length} 个 ===`);
+    return redeemablePositions;
 }
 
 // export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
