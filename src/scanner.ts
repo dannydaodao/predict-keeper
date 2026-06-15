@@ -1,6 +1,7 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { getClient } from './utils';
 import { CONFIG } from './config';
+import { log } from 'console';
 
     const client = getClient(CONFIG.NETWORK);
     const tx = new Transaction();
@@ -17,8 +18,22 @@ export interface RedeemablePosition {
     quantity: bigint;
 }
 
+/**
+ * 二元期权赢家判断逻辑
+ * @param settlementPrice 结算价
+ * @param strike 行权价
+ * @param isUp 是否看涨
+ */
+function isWinningPosition(settlementPrice: bigint, strike: bigint, isUp: boolean): boolean {
+    if (isUp) {
+        return settlementPrice >= strike;
+    } else {
+        return settlementPrice < strike;
+    }
+}
+
 export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
-    console.log("=== 正在通过 Predict Server 运行增量扫描 ===");
+    console.log("=== 正在通过 Predict Server 运行赢家增量扫描 ===");
     const redeemablePositions: RedeemablePosition[] = [];
 
     try {
@@ -26,47 +41,63 @@ export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
         const oraclesUrl = `${CONFIG.SERVER_URL}/predicts/${CONFIG.PREDICT_OBJECT_ID}/oracles`;
         const oracles = await fetch(oraclesUrl).then(res => res.json());
 
-        // 【增量过滤 1】只寻找：已经结算（settled）且全网还有人没领完（remaining_quantity > 0）的 Oracle！
-        const activeSettledOracles = oracles.filter((oracle: any) => 
-            oracle.status.toLowerCase() === 'settled' && oracle.remaining_quantity > 0
-        );
-
-        if (activeSettledOracles.length === 0) {
-            console.log("当前暂无包含未领取余额的已结算 Oracle，跳过本次轮询。");
-            return [];
+        // 整理出所有已结算的 Oracle 及其结算价格 Map
+        // 键: oracle_id, 值: settlement_price (bigint)
+        const settledOraclesMap = new Map<string, bigint>();
+        
+        for (const oracle of oracles) {
+            if (oracle.status.toLowerCase() === 'settled' && oracle.settlement_price !== null) {
+                settledOraclesMap.set(oracle.oracle_id, BigInt(oracle.settlement_price));
+            }
         }
 
-        const activeSettledOracleIds = new Set(activeSettledOracles.map((o: any) => o.oracle_id));
-        console.log(`发现待收割的活跃已结算 Oracle 数量: ${activeSettledOracleIds.size}`);
+        if (settledOraclesMap.size === 0) {
+            console.log("当前暂无已结算且发布了价格的 Oracle，跳过本次轮询。");
+            return [];
+        }
+        console.log(`发现已结算的 Oracle 数量: ${settledOraclesMap.size}`);
 
         // 2. 获取全网所有的 PredictManager 列表
         const managersUrl = `${CONFIG.SERVER_URL}/managers`;
         const managers = await fetch(managersUrl).then(res => res.json());
 
-        // 3. 对每个 manager，查询他当前的持仓
+        // 3. 遍历用户，精准抓取赢家
         for (const manager of managers) {
             const managerId = manager.manager_id;
             const positionsUrl = `${CONFIG.SERVER_URL}/managers/${managerId}/positions`;
             const positions = await fetch(positionsUrl).then(res => res.json());
+            log(`账户 ${managerId} 持仓数量: ${positions.length}`);
 
             for (const pos of positions) {
-                // 【增量过滤 2】如果该持仓：属于我们需要收割的 Oracle，且用户手里有还未提取的 quantity > 0
-                if (activeSettledOracleIds.has(pos.oracle_id) && BigInt(pos.quantity) > 0n) {
+                const oracleId = pos.oracle_id;
+                const settlementPrice = settledOraclesMap.get(oracleId);
+
+                // 如果该持仓对应的 Oracle 已经结算，且 quantity > 0
+                if (settlementPrice !== undefined && BigInt(pos.quantity) > 0n) {
                     
-                    // 找到了猎物！
-                    redeemablePositions.push({
-                        managerId: managerId,
-                        oracleId: pos.oracle_id,
-                        marketKey: {
-                            oracle_id: pos.oracle_id,
-                            expiry: BigInt(pos.expiry),
-                            strike: BigInt(pos.strike),
-                            is_up: pos.is_up
-                        },
-                        quantity: BigInt(pos.quantity)
-                    });
+                    // 【增量过滤核心】检查他中奖了没有
+                    const strikePrice = BigInt(pos.strike);
+                    const isUp = pos.is_up;
                     
-                    console.log(`[发现猎物] 账户 ${managerId} 在 Oracle ${pos.oracle_id} 上有未代领头寸, 数量: ${pos.quantity}`);
+                    if (isWinningPosition(settlementPrice, strikePrice, isUp)) {
+                        // 发现真正有钱可领的赢家！
+                        redeemablePositions.push({
+                            managerId: managerId,
+                            oracleId: oracleId,
+                            marketKey: {
+                                oracle_id: oracleId,
+                                expiry: BigInt(pos.expiry),
+                                strike: strikePrice,
+                                is_up: isUp
+                            },
+                            quantity: BigInt(pos.quantity)
+                        });
+                        console.log(`🎯 [锁定中奖头寸] 账户 ${managerId} 赌对了！将代领 Oracle ${oracleId} 上的 ${pos.quantity} 份奖金。`);
+                    } else {
+                        // 如果输了，我们永远不去 redeem 它，这就是一张废纸。
+                        // 这样避免了浪费 Gas 去 redeem 那些明知必输的彩票。
+                        console.log(`💨 [忽略作废头寸] 账户 ${managerId} 没猜中 Oracle ${oracleId} (Strike: ${strikePrice}, UP: ${isUp}), 忽略。`);
+                    }
                 }
             }
         }
@@ -75,7 +106,7 @@ export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
         console.error("通过 Predict Server 扫描失败:", error);
     }
 
-    console.log(`=== 扫描结束，共发现可代领头寸: ${redeemablePositions.length} 个 ===`);
+    console.log(`=== 扫描结束，共锁定可代领中奖头寸: ${redeemablePositions.length} 个 ===`);
     return redeemablePositions;
 }
 
