@@ -2,7 +2,7 @@
 import { getClient, getSigner } from './utils';
 import { CONFIG } from './config';
 import { findRedeemablePositions, findSingleOraclePositions } from './scanner';
-import { executeRedeemBatch } from './executor';
+import { executeRedeemBatch, refreshGasCoinCache } from './executor';
 
 async function main() {
     console.log(`🤖 Predict Keeper [极速版] 已启动！`);
@@ -20,6 +20,8 @@ async function main() {
     } catch (e) {
         console.error("初始化扫描失败:", e);
     }
+
+    await refreshGasCoinCache();
 
     // 2. 【核心提速】直接使用底层 WebSocket 订阅 OracleSettled 事件，实现真正的毫秒级响应
     const settledEventType = `${CONFIG.PREDICT_PACKAGE_ID}::oracle::OracleSettled`;
@@ -123,6 +125,31 @@ async function main() {
 
     // 保持进程存活
     await new Promise(() => {});
+}
+
+export async function initGasCoinFromEnv(): Promise<GasCoinRef | null> {
+    const gasObjectId = process.env.GAS_OBJECT;
+    if (!gasObjectId) return null;
+
+    try {
+        console.log(`📡 正在根据环境变量配置的 GAS_OBJECT [${gasObjectId}] 进行初始化...`);
+        const objResponse = await client.getObject({
+            id: gasObjectId
+        });
+
+        if (objResponse.data) {
+            cachedGasCoin = {
+                objectId: objResponse.data.objectId,
+                version: objResponse.data.version,
+                digest: objResponse.data.digest,
+            };
+            console.log(`✅ 成功初始化指定的 GAS_OBJECT 缓存！`);
+            return cachedGasCoin;
+        }
+    } catch (e) {
+        console.error("❌ 指定的 GAS_OBJECT 初始化失败:", e);
+    }
+    return null;
 }
 
 main();

@@ -168,24 +168,24 @@ export async function findSingleOraclePositions(oracle: { id: string, price: big
                 return [];
             }
 
-            const redeemedUrl = `${CONFIG.SERVER_URL}/positions/redeemed?oracle_id=${oracle.id}`;
-            const redeemedRecords = await fetch(redeemedUrl).then(res => res.json());
+            // const redeemedUrl = `${CONFIG.SERVER_URL}/positions/redeemed?oracle_id=${oracle.id}`;
+            // const redeemedRecords = await fetch(redeemedUrl).then(res => res.json());
 
-            if (redeemedRecords && redeemedRecords.length === mintedRecords.length) {
-                console.log("have redeemed all positions, oracleId: ", oracle.id);
-                return [];
-            }
+            // if (redeemedRecords && redeemedRecords.length === mintedRecords.length) {
+            //     console.log("have redeemed all positions, oracleId: ", oracle.id);
+            //     return [];
+            // }
 
-            const waitForReddemed = mintedRecords.filter((minted: any) => {
-                return !redeemedRecords.some((redeemed: any) => 
-                    redeemed.manager_id === minted.manager_id 
-                    && redeemed.expiry === minted.expiry
-                    && redeemed.strike === minted.strike
-                    && redeemed.is_up === minted.is_up
-                );
-            });
+            // const waitForReddemed = mintedRecords.filter((minted: any) => {
+            //     return !redeemedRecords.some((redeemed: any) => 
+            //         redeemed.manager_id === minted.manager_id 
+            //         && redeemed.expiry === minted.expiry
+            //         && redeemed.strike === minted.strike
+            //         && redeemed.is_up === minted.is_up
+            //     );
+            // });
 
-            for(const record of waitForReddemed){
+            for(const record of mintedRecords){
                 const strikePrice = BigInt(record.strike);
                 const isUp = record.is_up;
                 // 过滤：只代领猜中的单子 (won)
