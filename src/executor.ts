@@ -2,6 +2,7 @@ import { Transaction } from '@mysten/sui/transactions';
 import { getClient, getSigner } from './utils';
 import { CONFIG } from './config';
 import { RedeemablePosition } from './scanner';
+import { log } from 'console';
 
 const client = getClient(CONFIG.NETWORK);
 
@@ -12,6 +13,7 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
     const tx = new Transaction();
 
     for (const pos of positions) {
+        console.log(`构建代领交易: Manager ${pos.managerId}, Oracle ${pos.oracleId}, marketKey ${pos.oracleId}`);
         // 先利用 tx.moveCall 构造 MarketKey 实例
         const marketKey = tx.moveCall({
             target: `${CONFIG.PREDICT_PACKAGE_ID}::market_key::new`,
@@ -22,6 +24,7 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
                 tx.pure.bool(pos.marketKey.is_up),
             ],
         });
+        console.log("构建 MarketKey:", pos);
 
         // 打包 redeem_permissionless
         tx.moveCall({
