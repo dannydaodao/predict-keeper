@@ -239,142 +239,147 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'monospace', maxWidth: '600px', margin: '0 auto' }}>
-      <h2>🔮 Predict Keeper 调试中心</h2>
-      
-      <div style={{ marginBottom: '20px' }}>
+    <div style={{ padding: '20px', fontFamily: 'monospace', maxWidth: '1100px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #444', paddingBottom: '10px' }}>
+        <h2 style={{ margin: 0 }}>🔮 Predict Keeper 调试中心</h2>
         <ConnectButton />
       </div>
 
-      {/* 模块1：用户状态与资产信息 */}
-      {account ? (
-        <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px', marginBottom: '20px' }}>
-          <h3>👤 账户基本状态 (STEP 1)</h3>
-          <p><strong>钱包地址:</strong> {account.address}</p>
-          <p><strong>DUSDC 数量:</strong> {loading ? '查询中...' : `${dusdcBalance ?? '0.00'} DUSDC`}</p>
-          <p>
-            <strong>PredictManager 地址:</strong>{' '}
-            {loading ? (
-              '查询中...'
-            ) : managerId ? (
-              <span style={{ color: 'green', fontWeight: 'bold' }}>{managerId}</span>
-            ) : (
-              <span>
-                <span style={{ color: 'red' }}>未创建</span>{' '}
-                <button 
-                  onClick={handleCreateManager} 
-                  disabled={creating}
-                  style={{ marginLeft: '10px', cursor: 'pointer' }}
-                >
-                  {creating ? '正在创建...' : '一键创建'}
-                </button>
-              </span>
-            )}
-          </p>
-          <button onClick={fetchUserStatus} style={{ marginTop: '10px', cursor: 'pointer' }}>
-            手动刷新账户
-          </button>
-        </div>
-      ) : (
-        <p style={{ color: '#aaa', marginBottom: '20px' }}>请点击上方按钮连接钱包以激活测试。</p>
-      )}
-
-      {/* 模块2：Oracle 价格动态监控 (STEP 2) */}
-      <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px', marginBottom: '20px' }}>
-        <h3>📡 BTC 预言机实时数据 (STEP 2)</h3>
-        {currentOracle ? (
-          <div>
-            <p><strong>最新活跃 Oracle ID:</strong> <span style={{ fontSize: '12px', color: '#999' }}>{currentOracle.oracle_id}</span></p>
-            <p style={{ fontSize: '18px', margin: '15px 0' }}>
-              <strong>BTC 预言机价格:</strong>{' '}
-              <span style={{ color: '#00e676', fontWeight: 'bold', fontSize: '24px' }}>
-                {currentOracle.price ? `$ ${(Number(currentOracle.price) / 1000000000).toFixed(4)}` : "获取中..."}
-              </span>
-            </p>
-            <p><strong>结算行权价 Strike:</strong> $ {(Number(currentOracle.strike) / 1000000000).toFixed(2)}</p>
-            <p>
-              <strong>到期时间 Expiry:</strong>{' '}
-              <span style={{ color: '#ff9100', fontWeight: 'bold' }}>
-                {new Date(currentOracle.expiry).toLocaleTimeString()} ({getCountdown(currentOracle.expiry)})
-              </span>
-            </p>
-            <p><strong>预言机状态:</strong> <span style={{ color: '#29b6f6' }}>{currentOracle.status.toUpperCase()}</span></p>
-          </div>
-        ) : (
-          <p style={{ color: '#aaa' }}>正在搜寻最新活跃的 15 分钟 BTC 预言机并订阅其价格数据...</p>
-        )}
-      </div>
-
-      {/* 🔥 模块3：下单 Mint Position 功能区 (STEP 3) */}
-      <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px', marginTop: '20px' }}>
-        <h3>🎯 期权投注下单 (STEP 3)</h3>
-        {account && managerId && currentOracle ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* 行权价输入框 */}
-            <div>
-              <label><strong>1. 手动指定价格 (USD): </strong></label>
-              <input 
-                type="number" 
-                value={customStrike} 
-                onChange={(e) => setCustomStrike(e.target.value)}
-                placeholder="例如: 65230.5"
-                style={{ padding: '6px', width: '150px', marginLeft: '5px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
-              />
-              <button 
-                onClick={() => currentOracle.price && setCustomStrike((Number(currentOracle.price) / 1000000000).toFixed(2))}
-                style={{ marginLeft: '10px', fontSize: '11px', cursor: 'pointer' }}
-              >
-                用当前价
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px', alignItems: 'start' }}>
+        {/* 左侧栏：Step 1 & Step 2 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* 模块1：用户状态与资产信息 */}
+          {account ? (
+            <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
+              <h3 style={{ marginTop: 0 }}>👤 账户基本状态 (STEP 1)</h3>
+              <p><strong>钱包地址:</strong> {account.address}</p>
+              <p><strong>DUSDC 数量:</strong> {loading ? '查询中...' : `${dusdcBalance ?? '0.00'} DUSDC`}</p>
+              <p>
+                <strong>PredictManager 地址:</strong>{' '}
+                {loading ? (
+                  '查询中...'
+                ) : managerId ? (
+                  <span style={{ color: 'green', fontWeight: 'bold' }}>{managerId}</span>
+                ) : (
+                  <span>
+                    <span style={{ color: 'red' }}>未创建</span>{' '}
+                    <button 
+                      onClick={handleCreateManager} 
+                      disabled={creating}
+                      style={{ marginLeft: '10px', cursor: 'pointer' }}
+                    >
+                      {creating ? '正在创建...' : '一键创建'}
+                    </button>
+                  </span>
+                )}
+              </p>
+              <button onClick={fetchUserStatus} style={{ marginTop: '10px', cursor: 'pointer' }}>
+                手动刷新账户
               </button>
             </div>
+          ) : (
+            <p style={{ color: '#aaa', margin: 0 }}>请点击右上角按钮连接钱包以激活测试。</p>
+          )}
 
-            {/* 方向选择 */}
-            <div>
-              <label><strong>2. 预测方向 (UP / DOWN): </strong></label>
-              <select 
-                value={direction} 
-                onChange={(e) => setDirection(e.target.value as 'UP' | 'DOWN')}
-                style={{ padding: '6px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px', marginLeft: '5px', cursor: 'pointer' }}
-              >
-                <option value="UP">📈 UP (看涨 - 结算价高于行权价)</option>
-                <option value="DOWN">📉 DOWN (看跌 - 结算价低于行权价)</option>
-              </select>
-            </div>
-
-            {/* 下单数量 */}
-            <div>
-              <label><strong>3. 下单数量 (DUSDC): </strong></label>
-              <input 
-                type="number" 
-                value={quantity} 
-                onChange={(e) => setQuantity(e.target.value)}
-                style={{ padding: '6px', width: '100px', marginLeft: '5px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
-              />
-            </div>
-
-            {/* 触发下单按钮 */}
-            <button 
-              onClick={handleMintPosition} 
-              disabled={minting || !customStrike}
-              style={{ 
-                padding: '10px', 
-                background: '#6200ea', 
-                color: '#fff', 
-                border: 'none', 
-                borderRadius: '4px', 
-                fontWeight: 'bold', 
-                cursor: minting ? 'not-allowed' : 'pointer',
-                marginTop: '10px'
-              }}
-            >
-              {minting ? '正在打包发送交易...' : '🚀 发送 Mint 下单交易'}
-            </button>
+          {/* 模块2：Oracle 价格动态监控 (STEP 2) */}
+          <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
+            <h3 style={{ marginTop: 0 }}>📡 BTC 预言机实时数据 (STEP 2)</h3>
+            {currentOracle ? (
+              <div>
+                <p><strong>最新活跃 Oracle ID:</strong> <span style={{ fontSize: '12px', color: '#999' }}>{currentOracle.oracle_id}</span></p>
+                <p style={{ fontSize: '18px', margin: '15px 0' }}>
+                  <strong>BTC 预言机价格:</strong>{' '}
+                  <span style={{ color: '#00e676', fontWeight: 'bold', fontSize: '24px' }}>
+                    {currentOracle.price ? `$ ${(Number(currentOracle.price) / 1000000000).toFixed(4)}` : "获取中..."}
+                  </span>
+                </p>
+                <p><strong>结算行权价 Strike:</strong> $ {customStrike}</p>
+                <p>
+                  <strong>到期时间 Expiry:</strong>{' '}
+                  <span style={{ color: '#ff9100', fontWeight: 'bold' }}>
+                    {new Date(currentOracle.expiry).toLocaleTimeString()} ({getCountdown(currentOracle.expiry)})
+                  </span>
+                </p>
+                <p><strong>预言机状态:</strong> <span style={{ color: '#29b6f6' }}>{currentOracle.status.toUpperCase()}</span></p>
+              </div>
+            ) : (
+              <p style={{ color: '#aaa', margin: 0 }}>正在搜寻最新活跃的 15 分钟 BTC 预言机并订阅其价格数据...</p>
+            )}
           </div>
-        ) : (
-          <p style={{ color: '#aaa', fontSize: '13px' }}>请确保已经：连接钱包、绑定了 PredictManager 且当前有活跃的 Oracle，即可解锁极速下单功能。</p>
-        )}
-      </div>
+        </div>
 
+        {/* 右侧栏：Step 3 */}
+        <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
+          <h3 style={{ marginTop: 0 }}>🎯 期权投注下单 (STEP 3)</h3>
+          {account && managerId && currentOracle ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* 行权价输入框 */}
+              <div>
+                <label><strong>1. 手动指定价格 (USD): </strong></label>
+                <div style={{ display: 'flex', alignItems: 'center', marginTop: '5px', gap: '10px' }}>
+                  <input 
+                    type="number" 
+                    value={customStrike} 
+                    onChange={(e) => setCustomStrike(e.target.value)}
+                    placeholder="例如: 65230.5"
+                    style={{ padding: '6px', width: '150px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
+                  />
+                  <button 
+                    onClick={() => currentOracle.price && setCustomStrike((Number(currentOracle.price) / 1000000000).toFixed(2))}
+                    style={{ fontSize: '11px', cursor: 'pointer', padding: '6px 12px' }}
+                  >
+                    用当前价
+                  </button>
+                </div>
+              </div>
+
+              {/* 方向选择 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label><strong>2. 预测方向 (UP / DOWN): </strong></label>
+                <select 
+                  value={direction} 
+                  onChange={(e) => setDirection(e.target.value as 'UP' | 'DOWN')}
+                  style={{ padding: '6px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px', cursor: 'pointer', width: '100%' }}
+                >
+                  <option value="UP">📈 UP (看涨 - 结算价高于行权价)</option>
+                  <option value="DOWN">📉 DOWN (看跌 - 结算价低于行权价)</option>
+                </select>
+              </div>
+
+              {/* 下单数量 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label><strong>3. 下单数量 (DUSDC): </strong></label>
+                <input 
+                  type="number" 
+                  value={quantity} 
+                  onChange={(e) => setQuantity(e.target.value)}
+                  style={{ padding: '6px', width: '120px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
+                />
+              </div>
+
+              {/* 触发下单按钮 */}
+              <button 
+                onClick={handleMintPosition} 
+                disabled={minting || !customStrike}
+                style={{ 
+                  padding: '12px', 
+                  background: '#6200ea', 
+                  color: '#fff', 
+                  border: 'none', 
+                  borderRadius: '4px', 
+                  fontWeight: 'bold', 
+                  cursor: minting ? 'not-allowed' : 'pointer',
+                  marginTop: '15px'
+                }}
+              >
+                {minting ? '正在打包发送交易...' : '🚀 发送 Mint 下单交易'}
+              </button>
+            </div>
+          ) : (
+            <p style={{ color: '#aaa', fontSize: '13px', margin: 0 }}>请确保已经：连接钱包、绑定了 PredictManager 且当前有活跃的 Oracle，即可解锁极速下单功能。</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
