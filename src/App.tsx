@@ -76,6 +76,7 @@ export default function App() {
         setManagerId(null);
       } else {
         setManagerId(manager[0].manager_id);
+        await fetchManagerDUSDC(manager[0].manager_id); // 查询 PredictManager DUSDC 余额
       }
     } catch (err) {
       console.error("查询用户资产/管理器状态失败:", err);
@@ -83,6 +84,18 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  const fetchManagerDUSDC = async (managerId: string) => {
+    try {
+      const managerUrl = `${CONFIG.SERVER_URL}/managers/${managerId}/summary`;
+      const managerData = await fetch(managerUrl).then(res => res.json());
+      if (managerData && managerData.balances && managerData.balances.length > 0) {
+        setDusdcBalance((Number(managerData.balances[0].balance) / 1000000).toFixed(2));
+      }
+    } catch (err) {
+      console.error("查询 PredictManager DUSDC 余额失败:", err);
+    }
+  }
 
   // 一键创建 PredictManager 交易
   const handleCreateManager = async () => {
