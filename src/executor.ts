@@ -13,17 +13,17 @@ export interface GasCoinRef {
 }
 
 let cachedGasCoin: GasCoinRef | null = null;
-let referenceGasPrice: bigint = 1000n; // 可以设一个稍微高于 750n（比如 1000n）的安全值，避免向 RPC 查询
+let referenceGasPrice: bigint = 1000n; // Safe value slightly above 750n (e.g., 1000n) to avoid RPC querying
 
 export async function executeRedeemBatch(positions: RedeemablePosition[]) {
     if (positions.length === 0) return;
 
-    console.log(`准备为 ${positions.length} 个头寸执行代领...`);
+    console.log(`Preparing to redeem for ${positions.length} positions...`);
     const tx = new Transaction();
 
     for (const pos of positions) {
-        console.log(`构建代领交易: Manager ${pos.managerId}, Oracle ${pos.oracleId}, marketKey ${pos.oracleId}`);
-        // 先利用 tx.moveCall 构造 MarketKey 实例
+        console.log(`Building redemption TX: Manager ${pos.managerId}, Oracle ${pos.oracleId}, marketKey ${pos.oracleId}`);
+        // First construct MarketKey instance via tx.moveCall
         const marketKey = tx.moveCall({
             target: `${CONFIG.PREDICT_PACKAGE_ID}::market_key::new`,
             arguments: [
@@ -33,9 +33,9 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
                 tx.pure.bool(pos.marketKey.is_up),
             ],
         });
-        console.log("构建 MarketKey:", pos);
+        console.log("Built MarketKey:", pos);
 
-        // 打包 redeem_permissionless
+        // Pack redeem_permissionless
         tx.moveCall({
             target: `${CONFIG.PREDICT_PACKAGE_ID}::predict::redeem_permissionless`,
             typeArguments: [CONFIG.DUSDC_TYPE],
@@ -53,8 +53,8 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
     if (cachedGasCoin) {
         tx.setGasPayment([cachedGasCoin]);
     }
-    tx.setGasPrice(referenceGasPrice); // 显式设置，不让 SDK 去 RPC 查 Gas 价格
-    tx.setGasBudget(10000000n); // 显式设置一个安全的 Gas Budget（如 0.01 SUI）
+    tx.setGasPrice(referenceGasPrice); // Explicitly set gas price to avoid SDK querying RPC
+    tx.setGasBudget(10000000n); // Explicitly set a safe gas budget (e.g., 0.01 SUI)
 
     try {
         const signer = getSigner();
@@ -73,14 +73,14 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
                     digest: mutatedGas.reference.digest
                 };
             }
-            console.log(`✅ 批量代领成功！交易 Digest: ${result.digest}`);
+            console.log(`✅ Batch redemption succeeded! TX Digest: ${result.digest}`);
         } else {
-            console.error(`❌ 代领失败:`, result.effects?.status.error);
+            console.error(`❌ Redemption failed:`, result.effects?.status.error);
             cachedGasCoin = null;
             refreshGasCoinCache();
         }
     } catch (error) {
-        console.error("执行交易时发生异常:", error);
+        console.error("Exception occurred during TX execution:", error);
     }
 }
 
@@ -89,36 +89,36 @@ export async function refreshGasCoinCache(): Promise<GasCoinRef | null> {
         const signer = getSigner();
         const keeperAddress = signer.toSuiAddress();
         
-        console.log(`📡 正在为 Keeper 地址 [${keeperAddress}] 刷新 Gas 缓存...`);
+        console.log(`📡 Refreshing Gas Cache for Keeper [${keeperAddress}]...`);
 
-        // 1. 获取当前网路的最新参考 Gas 价格
+        // 1. Get reference gas price of the current network
         try {
             const systemGasPrice = await client.getReferenceGasPrice();
-            // 设为参考价格的 1.1 ~ 1.2 倍，利于在抢跑竞争中被验证者优先打包
+            // Set to 1.1 ~ 1.2 times reference price for prioritized packaging by validators in front-running competition
             referenceGasPrice = (BigInt(systemGasPrice) * 120n) / 100n;
         } catch (e) {
-            console.warn("⚠️ 获取链上 Gas 价格失败，使用默认 1000n MIST", e);
+            console.warn("⚠️ Failed to fetch on-chain gas price, using default 1000n MIST", e);
             referenceGasPrice = 1000n;
         }
 
-        // 2. 获取所有的 SUI Coin
+        // 2. Get all SUI Coins
         const coinsResult = await client.getCoins({
             owner: keeperAddress,
             coinType: '0x2::sui::SUI',
-            limit: 20, // 查找前20个
+            limit: 20, // search first 20
         });
 
         if (!coinsResult.data || coinsResult.data.length === 0) {
-            throw new Error(`❌ 你的 Keeper 地址 [${keeperAddress}] 没有任何 SUI 代币，无法作为 Gas 支付！`);
+            throw new Error(`❌ Keeper [${keeperAddress}] does not have any SUI tokens to pay for gas!`);
         }
 
-        // 3. 过滤并找到余额最大、能付得起 Gas（比如大于 0.1 SUI = 100,000,000 MIST）的 Coin Object
-        // 竞争机器人尽量用一个大额的 Coin 专门用来支付，防止频繁拆分（Coin Split）
+        // 3. Filter and find the Coin Object with maximum balance capable of paying gas (e.g. > 0.1 SUI = 100,000,000 MIST)
+        // Try to use a single large Coin for payment to prevent frequent coin splitting
         const suitableCoin = coinsResult.data
-            .filter(coin => BigInt(coin.balance) > 100000000n) // 大于 0.1 SUI
-            .sort((a, b) => Number(BigInt(b.balance) - BigInt(a.balance)))[0]; // 按余额从大到小排序，取最大的
+            .filter(coin => BigInt(coin.balance) > 100000000n) // greater than 0.1 SUI
+            .sort((a, b) => Number(BigInt(b.balance) - BigInt(a.balance)))[0]; // sorted descending, take largest
 
-        const chosenCoin = suitableCoin || coinsResult.data[0]; // 如果没有大于 0.1 SUI 的，就取第一个
+        const chosenCoin = suitableCoin || coinsResult.data[0]; // if none > 0.1 SUI, take the first one
         
         cachedGasCoin = {
             objectId: chosenCoin.coinObjectId,
@@ -126,14 +126,14 @@ export async function refreshGasCoinCache(): Promise<GasCoinRef | null> {
             digest: chosenCoin.digest,
         };
 
-        console.log(`✅ Gas 缓存刷新成功！`);
+        console.log(`✅ Gas cache refreshed successfully!`);
         console.log(`   Gas Object ID: ${cachedGasCoin.objectId}`);
-        console.log(`   余额 (MIST):   ${chosenCoin.balance}`);
-        console.log(`   设置 Gas Price: ${referenceGasPrice}`);
+        console.log(`   Balance (MIST):   ${chosenCoin.balance}`);
+        console.log(`   Gas Price set: ${referenceGasPrice}`);
         return cachedGasCoin;
 
     } catch (error) {
-        console.error("❌ 刷新 Gas 缓存失败:", error);
+        console.error("❌ Failed to refresh gas cache:", error);
         cachedGasCoin = null;
         return null;
     }

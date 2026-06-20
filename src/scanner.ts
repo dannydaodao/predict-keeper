@@ -6,7 +6,7 @@ import { waitForDebugger } from 'inspector';
 
     const client = getClient(CONFIG.NETWORK);
     const tx = new Transaction();
-// 定义我们需要找到的“猎物”结构
+// Define the structure of target redeemable positions
 export interface RedeemablePosition {
     managerId: string;
     oracleId: string;
@@ -20,10 +20,10 @@ export interface RedeemablePosition {
 }
 
 /**
- * 二元期权赢家判断逻辑
- * @param settlementPrice 结算价
- * @param strike 行权价
- * @param isUp 是否看涨
+ * Binary option winning determination logic
+ * @param settlementPrice Settlement Price
+ * @param strike Strike Price
+ * @param isUp Is Call Option
  */
 function isWinningPosition(settlementPrice: bigint, strike: bigint, isUp: boolean): boolean {
     if (isUp) {
@@ -34,11 +34,11 @@ function isWinningPosition(settlementPrice: bigint, strike: bigint, isUp: boolea
 }
 
 export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
-    console.log("=== 正在运行【逆向精准索引】增量扫描 ===");
+    console.log("=== Running [Reverse Precision Index] incremental scan ===");
     const redeemablePositions: RedeemablePosition[] = [];
 
     try {
-        // 1. 获取所有的 Oracles，筛选出已经结算且有价格的
+        // 1. Get all Oracles, filtering for settled ones with a price
         const oraclesUrl = `${CONFIG.SERVER_URL}/predicts/${CONFIG.PREDICT_OBJECT_ID}/oracles`;
         const oracles = await fetch(oraclesUrl).then(res => res.json());
 
@@ -54,22 +54,22 @@ export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
         }
         settledOracles.sort((a, b) => (b.settledAt > a.settledAt ? 1 : b.settledAt < a.settledAt ? -1 : 0));
         if (settledOracles.length === 0) {
-            console.log("当前暂无已结算且发布了价格的 Oracle，跳过本次轮询。");
+            console.log("No settled oracles with published price found, skipping this polling interval.");
             return [];
         }
 
-        console.log(`发现已结算的 Oracle 数量: ${settledOracles.length}，开始精准锁定中奖用户...`);
+        console.log(`Found settled oracle count: ${settledOracles.length}, starting precise winner detection...`);
 
-        // 2. 针对每一个已结算的 Oracle 运行逆向索引
+        // 2. Run reverse index scanning for each settled Oracle
         for (const oracle of settledOracles) {
-            console.log(`\n🔍 正在扫描结算 Oracle [${oracle.id}]...`);
+            console.log(`\n🔍 Scanning settled Oracle [${oracle.id}]...`);
 
-            // 【关键 API 路由：/positions/minted?oracle_id=...】
+            // [Key API Route: /positions/minted?oracle_id=...]
             const mintedUrl = `${CONFIG.SERVER_URL}/positions/minted?oracle_id=${oracle.id}`;
             const mintedRecords = await fetch(mintedUrl).then(res => res.json());
 
             if (!mintedRecords || mintedRecords.length === 0) {
-                console.log(`-> 没有用户在该 Oracle 下单过。`);
+                console.log(`-> No users placed orders on this Oracle.`);
                 continue;
             }
 
@@ -93,7 +93,7 @@ export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
             for(const record of waitForReddemed){
                 const strikePrice = BigInt(record.strike);
                 const isUp = record.is_up;
-                // 过滤：只代领猜中的单子 (won)
+                // Filtering: only claim for calls/puts that won
 
                 if (isWinningPosition(oracle.price, strikePrice, isUp)) {
                     redeemablePositions.push({
@@ -107,64 +107,41 @@ export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
                         },
                         quantity: BigInt(record.quantity)
                     });
-                    //                     redeemablePositions.push({
-                    //     managerId: "0x42a4c7e19819c797698df2625908234e83cb3499606726c53fe02870a45c05e0",
-                    //     oracleId: "0xee875b4697826cc0fed3f3808c79375a26d5f264caf0f2a480bab2c93ffc1ff5",
-                    //     marketKey: {
-                    //         oracle_id: "0xee875b4697826cc0fed3f3808c79375a26d5f264caf0f2a480bab2c93ffc1ff5",
-                    //         expiry: 1781534700000n,
-                    //         strike: 66484000000000n,
-                    //         is_up: isUp
-                    //     },
-                    //     quantity: 7017856n,
-                    // });
-
-    //                     positions.push({
-    // managerId: "0x926cbf800a051d8d93ac4d1ff9a049116ffd7c3705fe33baf5b45ac981f8b082",
-    // oracleId: "0x169c5df118f4655fcb6404bd8e1d328f0bf0789855c7511236a48d936b4f01e3",
-    // marketKey: {
-    //     oracle_id: "0x169c5df118f4655fcb6404bd8e1d328f0bf0789855c7511236a48d936b4f01e3",
-    //     expiry: 1780398900000n,
-    //     strike: 69200n * 1_000_000_000n,
-    //     is_up: true,
-    // },
-    // quantity: 10n * 1_000_000n,
-    // });
-                    console.log(`   🎯 [赢家锁定] 账户 ${record.manager_id} 猜中！(Strike: ${strikePrice}, UP: ${isUp}) 待领数量: ${record.quantity} digest : ${record.digest}`);
+                    console.log(`   🎯 [Winner Locked] Account ${record.manager_id} won! (Strike: ${strikePrice}, UP: ${isUp}) Quantity pending: ${record.quantity} digest: ${record.digest}`);
                     break;
                 } else {
-                    console.log(`   💨 [亏损略过] 账户 ${record.manager_id} 猜错。(Strike: ${strikePrice}, UP: ${isUp}) 不代领。`);
+                    console.log(`   💨 [Loss Skipped] Account ${record.manager_id} lost. (Strike: ${strikePrice}, UP: ${isUp}) Skipping redemption.`);
                 }
             }
             if(redeemablePositions.length > 0){
-                console.warn("⚠️ 发现过多可代领头寸，当前仅锁定前 100 个，建议加快执行速度！");
+                console.warn("⚠️ Too many redeemable positions found, only locking the top 100, suggest accelerating execution speed!");
                 break;
             }
 
         }
 
     } catch (error) {
-        console.error("逆向精准扫描发生故障:", error);
+        console.error("Reverse precise scan encountered error:", error);
     }
 
-    console.log(`\n=== 扫描结束，共锁定可代领中奖头寸: ${redeemablePositions.length} 个 ===`);
+    console.log(`\n=== Scan ended, locked ${redeemablePositions.length} redeemable winning positions in total ===`);
     return redeemablePositions;
 }
 
 
 export async function findSingleOraclePositions(oracle: { id: string, price: bigint }): Promise<RedeemablePosition[]> {
-    console.log("findSingleOraclePositions === 正在运行【单 Oracle 精准索引】增量扫描 === oracleId: ", oracle.id, " settledPrice: ", oracle.price);
+    console.log("findSingleOraclePositions === Running [Single Oracle Precision Index] incremental scan === oracleId: ", oracle.id, " settledPrice: ", oracle.price);
     const redeemablePositions: RedeemablePosition[] = [];
 
     try {
-            console.log(`\n🔍 正在扫描结算 Oracle [${oracle.id}]...`);
+            console.log(`\n🔍 Scanning settled Oracle [${oracle.id}]...`);
 
-            // 【关键 API 路由：/positions/minted?oracle_id=...】
+            // [Key API Route: /positions/minted?oracle_id=...]
             const mintedUrl = `${CONFIG.SERVER_URL}/positions/minted?oracle_id=${oracle.id}`;
             const mintedRecords = await fetch(mintedUrl).then(res => res.json());
 
             if (!mintedRecords || mintedRecords.length === 0) {
-                console.log(`-> 没有用户在该 Oracle 下单过。`);
+                console.log(`-> No users placed orders on this Oracle.`);
                 return [];
             }
 
@@ -188,7 +165,7 @@ export async function findSingleOraclePositions(oracle: { id: string, price: big
             for(const record of mintedRecords){
                 const strikePrice = BigInt(record.strike);
                 const isUp = record.is_up;
-                // 过滤：只代领猜中的单子 (won)
+                // Filtering: only claim for calls/puts that won
 
                 if (isWinningPosition(oracle.price, strikePrice, isUp)) {
                     redeemablePositions.push({
@@ -202,17 +179,17 @@ export async function findSingleOraclePositions(oracle: { id: string, price: big
                         },
                         quantity: BigInt(record.quantity)
                     });
-                    console.log(`   🎯 [赢家锁定] 账户 ${record.manager_id} 猜中！(Strike: ${strikePrice}, UP: ${isUp}) 待领数量: ${record.quantity} digest : ${record.digest}`);
+                    console.log(`   🎯 [Winner Locked] Account ${record.manager_id} won! (Strike: ${strikePrice}, UP: ${isUp}) Quantity pending: ${record.quantity} digest: ${record.digest}`);
                     break;
                 } else {
-                    console.log(`   💨 [亏损略过] 账户 ${record.manager_id} 猜错。(Strike: ${strikePrice}, UP: ${isUp}) 不代领。`);
+                    console.log(`   💨 [Loss Skipped] Account ${record.manager_id} lost. (Strike: ${strikePrice}, UP: ${isUp}) Skipping redemption.`);
                 }
         }
 
     } catch (error) {
-        console.error("逆向精准扫描发生故障:", error);
+        console.error("Reverse precise scan encountered error:", error);
     }
 
-    console.log(`\n=== 扫描结束，共锁定可代领中奖头寸: ${redeemablePositions.length} 个 ===`);
+    console.log(`\n=== Scan ended, locked ${redeemablePositions.length} redeemable winning positions in total ===`);
     return redeemablePositions;
 }

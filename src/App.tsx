@@ -26,16 +26,16 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // Oracle 的前端渲染状态
+  // Front-end rendering state of Oracle
   const [currentOracle, setCurrentOracle] = useState<OracleData | null>(null);
 
-  // 🔥 3. 新增下单功能参数对应的 React State 状态
-  const [customStrike, setCustomStrike] = useState<string>(''); // 手动指定价格 (行权价，单位为美元)
-  const [direction, setDirection] = useState<'UP' | 'DOWN'>('UP'); // 选择方向 (看涨/看跌)
-  const [quantity, setQuantity] = useState<string>('10'); // 投注数量 (DUSDC)
-  const [minting, setMinting] = useState(false); // 投注状态 Loading
+  // 3. Added React state for order parameters
+  const [customStrike, setCustomStrike] = useState<string>(''); // manual strike price in USD
+  const [direction, setDirection] = useState<'UP' | 'DOWN'>('UP'); // Select direction (UP/DOWN)
+  const [quantity, setQuantity] = useState<string>('10'); // Bet quantity (DUSDC)
+  const [minting, setMinting] = useState(false); // Betting status loading
 
-  // 1. 查询钱包的 DUSDC 余额及 PredictManager
+  // 1. Query wallet DUSDC balance and PredictManager
   useEffect(() => {
     if (!account) {
       setDusdcBalance(null);
@@ -46,13 +46,13 @@ export default function App() {
     fetchUserStatus();
   }, [account, suiClient]);
 
-  // 2秒轮询：高频获取最新 Oracle 及其价格
+  // 2-second polling: high-frequency retrieval of latest Oracle and price
   useEffect(() => {
-    fetchLastestOracle(); // 初始化加载
+    fetchLastestOracle(); // Initial load
 
     const interval = setInterval(() => {
       fetchLastestOracle();
-    }, 2000); // 2000 毫秒 = 2 秒
+    }, 2000); // 2000 ms = 2 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -61,7 +61,7 @@ export default function App() {
     if (!account) return;
     setLoading(true);
     try {
-      // 查询 DUSDC 余额
+      // Query DUSDC balance
       const coins = await suiClient.getCoins({
         owner: account.address,
         coinType: CONFIG.DUSDC_TYPE,
@@ -76,10 +76,10 @@ export default function App() {
         setManagerId(null);
       } else {
         setManagerId(manager[0].manager_id);
-        await fetchManagerDUSDC(manager[0].manager_id); // 查询 PredictManager DUSDC 余额
+        await fetchManagerDUSDC(manager[0].manager_id); // Query PredictManager DUSDC balance
       }
     } catch (err) {
-      console.error("查询用户资产/管理器状态失败:", err);
+      console.error("Failed to query user assets / manager status:", err);
     } finally {
       setLoading(false);
     }
@@ -93,11 +93,11 @@ export default function App() {
         setDusdcBalance((Number(managerData.balances[0].balance) / 1000000).toFixed(2));
       }
     } catch (err) {
-      console.error("查询 PredictManager DUSDC 余额失败:", err);
+      console.error("Failed to query PredictManager DUSDC balance:", err);
     }
   }
 
-  // 一键创建 PredictManager 交易
+  // One-click PredictManager creation transaction
   const handleCreateManager = async () => {
     if (!account) return;
     setCreating(true);
@@ -112,11 +112,11 @@ export default function App() {
         transaction: tx,
       });
 
-      console.log("创建 PredictManager 交易成功:", result);
-      // 稍等 2 秒等待索引后刷新
+      console.log("Create PredictManager transaction succeeded:", result);
+      // Wait 2 seconds for indexing before refreshing
       setTimeout(fetchUserStatus, 2000);
     } catch (err) {
-      console.error("创建 PredictManager 失败:", err);
+      console.error("Failed to create PredictManager:", err);
     } finally {
       setCreating(false);
     }
@@ -129,7 +129,7 @@ export default function App() {
       const now = Date.now();
       const activeOracles = oracles.filter((oracle: any) => oracle.status.toLowerCase() === 'active' && oracle.expiry > now);
       if (activeOracles.length === 0) {
-        console.log("当前暂无已激活且发布了价格的 Oracle。");
+        console.log("No active Oracle with published price currently.");
         setCurrentOracle(null);
         return null;
       }
@@ -142,7 +142,7 @@ export default function App() {
       
       const currentPrice = prices ? prices.forward : null;
 
-      // 自动将最新价格同步到手动指定行权价的初始默认值中 (如果还没手动输入)
+      // Automatically sync the latest price to the default manual strike (if not manually entered yet)
       if (currentPrice && false) {
         setCustomStrike((Number(currentPrice) / 1000000000).toFixed(2));
       }
@@ -156,28 +156,28 @@ export default function App() {
       });
 
     } catch (err) {
-      console.error("查询最新 Oracle 失败:", err);
+      console.error("Failed to query latest Oracle:", err);
       return null;
     }
   }
 
-  // 🔥 4. 处理下单 Mint 功能
+  // 4. Handle order Mint function
   const handleMintPosition = async () => {
     if (!account || !managerId || !currentOracle) {
-      alert("请连接钱包、绑定 PredictManager 并确保加载了最新的 Oracle！");
+      alert("Please connect wallet, bind PredictManager, and ensure the latest Oracle is loaded!");
       return;
     }
 
     setMinting(true);
     try {
-      // a. 计算参数
-      // Sui 预言机行权价 Strike 需要乘以 10^9 还原为 scale，例如 65000 美元 -> 65000 * 1e9
+      // a. Calculate parameters
+      // Sui oracle strike price Strike needs to be multiplied by 10^9 to scale, e.g. 65000 USD -> 65000 * 1e9
       const strikeScaled = BigInt(Math.floor(Number(customStrike) * 1000000000));
-      // DUSDC Decimals 为 6
+      // DUSDC Decimals is 6
       const quantityScaled = BigInt(Math.floor(Number(quantity) * 1000000));
       const isUp = direction === 'UP';
 
-      console.log(`🚀 发起 Mint 下单交易：`);
+      console.log(`🚀 Initiating Mint order transaction:`);
       console.log(`   Oracle ID:  ${currentOracle.oracle_id}`);
       console.log(`   Expiry:     ${currentOracle.expiry}`);
       console.log(`   Strike:     ${strikeScaled.toString()}`);
@@ -186,7 +186,7 @@ export default function App() {
 
       const tx = new Transaction();
 
-      // b. 在链上本地构造 MarketKey
+      // b. Construct MarketKey locally on-chain
       const marketKey = tx.moveCall({
         target: `${CONFIG.PREDICT_PACKAGE_ID}::market_key::new`,
         arguments: [
@@ -197,7 +197,7 @@ export default function App() {
         ],
       });
 
-      // c. 调用 predict::mint
+      // c. Call predict::mint
       tx.moveCall({
         target: `${CONFIG.PREDICT_PACKAGE_ID}::predict::mint`,
         typeArguments: [CONFIG.DUSDC_TYPE],
@@ -211,153 +211,153 @@ export default function App() {
         ],
       });
 
-      // d. 签名并执行交易
+      // d. Sign and execute transaction
       const result = await signAndExecute({
         transaction: tx,
       });
 
-      console.log("✅ 下单 Mint 成功:", result);
-      alert(`下单成功！交易哈希: ${result.digest}`);
+      console.log("✅ Mint order succeeded:", result);
+      alert(`Order successful! Transaction Digest: ${result.digest}`);
 
-      // 延迟 2 秒刷新钱包状态
+      // Delay 2 seconds to refresh wallet status
       setTimeout(fetchUserStatus, 2000);
     } catch (err: any) {
-      console.error("❌ 下单 Mint 失败:", err);
-      alert(`下单失败: ${err.message || err}`);
+      console.error("❌ Mint order failed:", err);
+      alert(`Order failed: ${err.message || err}`);
     } finally {
       setMinting(false);
     }
   };
 
-  // 辅助函数：格式化过期倒计时
+  // Helper function: format expiration countdown
   const getCountdown = (expiryTimestamp: number) => {
     const diff = expiryTimestamp - Date.now();
-    if (diff <= 0) return "已到期，等待结算";
+    if (diff <= 0) return "Expired, awaiting settlement";
     const minutes = Math.floor(diff / 60000);
     const seconds = Math.floor((diff % 60000) / 1000);
-    return `${minutes}分${seconds}秒`;
+    return `${minutes}m ${seconds}s`;
   }
 
   return (
     <div style={{ padding: '20px', fontFamily: 'monospace', maxWidth: '1100px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #444', paddingBottom: '10px' }}>
-        <h2 style={{ margin: 0 }}>🔮 Predict Keeper 调试中心</h2>
+        <h2 style={{ margin: 0 }}>🔮 Predict Keeper Debug Center</h2>
         <ConnectButton />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px', alignItems: 'start' }}>
-        {/* 左侧栏：Step 1 & Step 2 */}
+        {/* Left column: Step 1 & Step 2 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* 模块1：用户状态与资产信息 */}
+          {/* Module 1: User status and asset details */}
           {account ? (
             <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
-              <h3 style={{ marginTop: 0 }}>👤 账户基本状态 (STEP 1)</h3>
-              <p><strong>钱包地址:</strong> {account.address}</p>
-              <p><strong>DUSDC 数量:</strong> {loading ? '查询中...' : `${dusdcBalance ?? '0.00'} DUSDC`}</p>
+              <h3 style={{ marginTop: 0 }}>👤 Account Status (STEP 1)</h3>
+              <p><strong>Wallet Address:</strong> {account.address}</p>
+              <p><strong>DUSDC Balance:</strong> {loading ? 'Querying...' : `${dusdcBalance ?? '0.00'} DUSDC`}</p>
               <p>
-                <strong>PredictManager 地址:</strong>{' '}
+                <strong>PredictManager Address:</strong>{' '}
                 {loading ? (
-                  '查询中...'
+                  'Querying...'
                 ) : managerId ? (
                   <span style={{ color: 'green', fontWeight: 'bold' }}>{managerId}</span>
                 ) : (
                   <span>
-                    <span style={{ color: 'red' }}>未创建</span>{' '}
+                    <span style={{ color: 'red' }}>Not Created</span>{' '}
                     <button 
                       onClick={handleCreateManager} 
                       disabled={creating}
                       style={{ marginLeft: '10px', cursor: 'pointer' }}
                     >
-                      {creating ? '正在创建...' : '一键创建'}
+                      {creating ? 'Creating...' : 'Create Manager'}
                     </button>
                   </span>
                 )}
               </p>
               <button onClick={fetchUserStatus} style={{ marginTop: '10px', cursor: 'pointer' }}>
-                手动刷新账户
+                Refresh Account
               </button>
             </div>
           ) : (
-            <p style={{ color: '#aaa', margin: 0 }}>请点击右上角按钮连接钱包以激活测试。</p>
+            <p style={{ color: '#aaa', margin: 0 }}>Please click the top-right button to connect wallet.</p>
           )}
 
-          {/* 模块2：Oracle 价格动态监控 (STEP 2) */}
+          {/* Module 2: Oracle price dynamic monitoring (STEP 2) */}
           <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
-            <h3 style={{ marginTop: 0 }}>📡 BTC 预言机实时数据 (STEP 2)</h3>
+            <h3 style={{ marginTop: 0 }}>📡 BTC Oracle Real-time Data (STEP 2)</h3>
             {currentOracle ? (
               <div>
-                <p><strong>最新活跃 Oracle ID:</strong> <span style={{ fontSize: '12px', color: '#999' }}>{currentOracle.oracle_id}</span></p>
+                <p><strong>Latest Active Oracle ID:</strong> <span style={{ fontSize: '12px', color: '#999' }}>{currentOracle.oracle_id}</span></p>
                 <p style={{ fontSize: '18px', margin: '15px 0' }}>
-                  <strong>BTC 预言机价格:</strong>{' '}
+                  <strong>BTC Oracle Price:</strong>{' '}
                   <span style={{ color: '#00e676', fontWeight: 'bold', fontSize: '24px' }}>
-                    {currentOracle.price ? `$ ${(Number(currentOracle.price) / 1000000000).toFixed(4)}` : "获取中..."}
+                    {currentOracle.price ? `$ ${(Number(currentOracle.price) / 1000000000).toFixed(4)}` : "Loading..."}
                   </span>
                 </p>
-                <p><strong>结算行权价 Strike:</strong> $ {customStrike}</p>
+                <p><strong>Strike Price:</strong> $ {customStrike}</p>
                 <p>
-                  <strong>到期时间 Expiry:</strong>{' '}
+                  <strong>Expiry:</strong>{' '}
                   <span style={{ color: '#ff9100', fontWeight: 'bold' }}>
                     {new Date(currentOracle.expiry).toLocaleTimeString()} ({getCountdown(currentOracle.expiry)})
                   </span>
                 </p>
-                <p><strong>预言机状态:</strong> <span style={{ color: '#29b6f6' }}>{currentOracle.status.toUpperCase()}</span></p>
+                <p><strong>Oracle Status:</strong> <span style={{ color: '#29b6f6' }}>{currentOracle.status.toUpperCase()}</span></p>
               </div>
             ) : (
-              <p style={{ color: '#aaa', margin: 0 }}>正在搜寻最新活跃的 15 分钟 BTC 预言机并订阅其价格数据...</p>
+              <p style={{ color: '#aaa', margin: 0 }}>Searching for the latest active 15-minute BTC Oracle and subscribing to its price data...</p>
             )}
           </div>
         </div>
 
-        {/* 右侧栏：Step 3 */}
+        {/* Right column: Step 3 */}
         <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
-          <h3 style={{ marginTop: 0 }}>🎯 期权投注下单 (STEP 3)</h3>
+          <h3 style={{ marginTop: 0 }}>🎯 Option Order Placement (STEP 3)</h3>
           {account && managerId && currentOracle ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* 行权价输入框 */}
+              {/* Strike price input box */}
               <div>
-                <label><strong>1. 手动指定价格 (USD): </strong></label>
+                <label><strong>1. Manual Strike Price (USD): </strong></label>
                 <div style={{ display: 'flex', alignItems: 'center', marginTop: '5px', gap: '10px' }}>
                   <input 
                     type="number" 
                     value={customStrike} 
-                    onChange={(e) => setCustomStrike(e.target.value)}
-                    placeholder="例如: 65230.5"
+                    onChange={(e) => setCustomStrike(e.currentTarget.value)}
+                    placeholder="e.g. 65230.5"
                     style={{ padding: '6px', width: '150px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
                   />
                   <button 
                     onClick={() => currentOracle.price && setCustomStrike((Number(currentOracle.price) / 1000000000).toFixed(2))}
                     style={{ fontSize: '11px', cursor: 'pointer', padding: '6px 12px' }}
                   >
-                    用当前价
+                    Use Current Price
                   </button>
                 </div>
               </div>
 
-              {/* 方向选择 */}
+              {/* Direction selection */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <label><strong>2. 预测方向 (UP / DOWN): </strong></label>
+                <label><strong>2. Prediction Direction (UP / DOWN): </strong></label>
                 <select 
                   value={direction} 
-                  onChange={(e) => setDirection(e.target.value as 'UP' | 'DOWN')}
+                  onChange={(e) => setDirection(e.currentTarget.value as 'UP' | 'DOWN')}
                   style={{ padding: '6px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px', cursor: 'pointer', width: '100%' }}
                 >
-                  <option value="UP">📈 UP (看涨 - 结算价高于行权价)</option>
-                  <option value="DOWN">📉 DOWN (看跌 - 结算价低于行权价)</option>
+                  <option value="UP">📈 UP (Call - settlement price higher strike)</option>
+                  <option value="DOWN">📉 DOWN (Put - settlement price lower strike)</option>
                 </select>
               </div>
 
-              {/* 下单数量 */}
+              {/* Order quantity */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <label><strong>3. 下单数量 (DUSDC): </strong></label>
+                <label><strong>3. Order Quantity (DUSDC): </strong></label>
                 <input 
                   type="number" 
                   value={quantity} 
-                  onChange={(e) => setQuantity(e.target.value)}
+                  onChange={(e) => setQuantity(e.currentTarget.value)}
                   style={{ padding: '6px', width: '120px', background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}
                 />
               </div>
 
-              {/* 触发下单按钮 */}
+              {/* Trigger order button */}
               <button 
                 onClick={handleMintPosition} 
                 disabled={minting || !customStrike}
@@ -372,11 +372,11 @@ export default function App() {
                   marginTop: '15px'
                 }}
               >
-                {minting ? '正在打包发送交易...' : '🚀 发送 Mint 下单交易'}
+                {minting ? 'Sending Transaction...' : '🚀 Send Mint Transaction'}
               </button>
             </div>
           ) : (
-            <p style={{ color: '#aaa', fontSize: '13px', margin: 0 }}>请确保已经：连接钱包、绑定了 PredictManager 且当前有活跃的 Oracle，即可解锁极速下单功能。</p>
+            <p style={{ color: '#aaa', fontSize: '13px', margin: 0 }}>Please ensure you have: connected wallet, bound PredictManager, and have an active Oracle to unlock fast order placement.</p>
           )}
         </div>
       </div>

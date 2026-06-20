@@ -6,7 +6,7 @@ export const CONFIG = {
     CLOCK_ID: '0x6',
     SERVER_URL: 'https://predict-server.testnet.mystenlabs.com',
     
-    // Keeper 轮询的间隔时间 (毫秒)
+    // Keeper polling interval (ms)
     POLL_INTERVAL_MS: 15 * 1000, 
 };
 
@@ -26,4 +26,4 @@ export const dusdcCurrencyID = { mainnet: "", testnet: "0xf3000dff421833d4bb8ed5
 
 // PLP treasury cap (minted at publish time by plp::init, captured by redeploy)
 export const plpTreasuryCapID = { mainnet: "", testnet: "0x2f216dd491208da7a36d6ff435bb969584758c142374e26b087098cdc1dc1de3" };
-export const POLL_INTERVAL_MS = 15 * 1000; // Keeper 轮询的间隔时间 (毫秒)
+export const POLL_INTERVAL_MS = 15 * 1000; // Keeper polling interval (ms)

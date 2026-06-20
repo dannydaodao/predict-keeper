@@ -5,46 +5,46 @@ import { findRedeemablePositions, findSingleOraclePositions } from './scanner';
 import { executeRedeemBatch, refreshGasCoinCache } from './executor';
 
 async function main() {
-    console.log(`🤖 Predict Keeper [极速版] 已启动！`);
-    console.log(`📡 WebSocket 实时监听中...`);
+    console.log(`🤖 Predict Keeper [Ultra-Fast] Started!`);
+    console.log(`📡 WebSocket Real-time Listening...`);
     
     const signer = getSigner();
     const client = getClient(CONFIG.NETWORK);
-    console.log(`💼 Keeper 地址: ${signer.toSuiAddress()}`);
+    console.log(`💼 Keeper Address: ${signer.toSuiAddress()}`);
     console.log(`-----------------------------------`);
 
-    // 1. 启动时先全量扫一次，把历史上积压的漏网之鱼代领掉
+    // 1. Full scan on startup to redeem historical missed positions
     try {
         // const pending = await findRedeemablePositions();
         // await executeRedeemBatch(pending);
     } catch (e) {
-        console.error("初始化扫描失败:", e);
+        console.error("Initial scan failed:", e);
     }
 
     await refreshGasCoinCache();
 
-    // 2. 【核心提速】直接使用底层 WebSocket 订阅 OracleSettled 事件，实现真正的毫秒级响应
+    // 2. [Core Speedup] Use low-level WebSocket to subscribe to OracleSettled events for real millisecond response
     const settledEventType = `${CONFIG.PREDICT_PACKAGE_ID}::oracle::OracleSettled`;
     
-    // 获取 Websocket 端点
+    // Get WebSocket endpoint
     const rpcUrl = process.env.RPC_URL || "https://rpc-testnet.suiscan.xyz";
     let wsUrl = rpcUrl.replace(/^http/, 'ws');
     if (!wsUrl.endsWith('/websocket') && !wsUrl.includes(':9000')) {
-        // 如果是 https://rpc-testnet.suiscan.xyz 类似的普通 HTTP，后缀加上 /websocket
+        // If it is ordinary HTTP, append /websocket
         wsUrl = wsUrl.replace(/\/+$/, '') + '/websocket';
     }
 
-    console.log(`⚡ 正在向 Sui 全节点建立 Websocket 连接: ${wsUrl}`);
+    console.log(`⚡ Establishing WebSocket connection to Sui full node: ${wsUrl}`);
     
     function startEventSubscription() {
-        // Bun 和现代 Node.js 均支持原生 WebSocket。
-        // 如果在特定 Node.js 环境下报错，可运行 `cd predict-keeper && bun add ws`，然后在这里引入 `import WebSocket from 'ws';`
+        // Native WebSocket is supported in Bun and modern Node.js.
+        // If it throws error in specific Node.js environment, run `cd predict-keeper && bun add ws` and import WebSocket.
         const ws = new WebSocket(wsUrl);
 
         let pingInterval: any;
 
         ws.onopen = () => {
-            console.log(`✅ WebSocket 连接已建立，正在发送 suix_subscribeEvent 订阅请求...`);
+            console.log(`✅ WebSocket connection established, sending suix_subscribeEvent subscription request...`);
             
             const subscribePayload = {
                 jsonrpc: "2.0",
@@ -56,7 +56,7 @@ async function main() {
             };
             ws.send(JSON.stringify(subscribePayload));
 
-            // 每 20 秒发送一次 ping 保持连接活跃，防止节点超时断开
+            // Send ping every 20 seconds to keep connection alive
             pingInterval = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ jsonrpc: "2.0", method: "ping", params: [], id: 999 }));
@@ -68,62 +68,62 @@ async function main() {
             try {
                 const data = JSON.parse(messageEvent.data as string);
                 
-                // 忽略 ping 返回或其他不相关消息
+                // Ignore ping responses or other irrelevant messages
                 if (data.result !== undefined && typeof data.result === 'number') {
-                    console.log(`📡 订阅注册成功！Subscription ID: ${data.result}`);
+                    console.log(`📡 Subscription registered successfully! Subscription ID: ${data.result}`);
                     return;
                 }
 
-                // 处理推送的事件
+                // Handle pushed events
                 if (data.method === "suix_subscribeEvent" && data.params) {
                     const event = data.params.result;
                     const json = event.parsedJson as any;
                     
-                    console.log(`\n🚨 [实时爆料 - Websocket 毫秒级推送] 检测到 Oracle 刚刚结算！`);
+                    console.log(`\n🚨 [Real-time Push - WebSocket Millisecond Level] Detected Oracle just settled!`);
                     console.log(`   Oracle ID: ${json.oracle_id}`);
-                    console.log(`   结算价格:   ${json.settlement_price}`);
-                    console.log(`   触发交易:   ${event.id.txDigest}`);
+                    console.log(`   Settlement Price:   ${json.settlement_price}`);
+                    console.log(`   Triggering TX:   ${event.id.txDigest}`);
                     console.log(`   eventtime:   ${json.timestamp}`);
-                    console.log(`   事件时间:   ${new Date().toLocaleString()}`);
+                    console.log(`   Event Time:   ${new Date().toLocaleString()}`);
                     
-                    // 收到结算通知，【立刻】进行精准代领，不耽误一毫秒！
-                    console.time("⏱️ 扫描到执行耗时");
+                    // Received settlement notice, redeem immediately without delay!
+                    console.time("⏱️ Scan-to-execution cost");
                     const positions = await findSingleOraclePositions({
                         id: json.oracle_id,
                         price: BigInt(json.settlement_price),
                     });
                     console.log(`handle position time ${new Date().toLocaleString()}`);
                     await executeRedeemBatch(positions);
-                    console.timeEnd("⏱️ 扫描到执行耗时");
+                    console.timeEnd("⏱️ Scan-to-execution cost");
                 }
             } catch (err) {
-                console.error("解析 WebSocket 推送消息失败:", err);
+                console.error("Failed to parse WebSocket pushed message:", err);
             }
         };
 
         ws.onerror = (errorEvent: any) => {
-            console.error("❌ WebSocket 发生错误:", errorEvent.message || errorEvent);
+            console.error("❌ WebSocket error occurred:", errorEvent.message || errorEvent);
         };
 
         ws.onclose = (closeEvent) => {
-            console.warn(`⚠️ WebSocket 连接断开 (Code: ${closeEvent.code})。正在尝试在 1 秒后重连...`);
+            console.warn(`⚠️ WebSocket disconnected (Code: ${closeEvent.code}). Retrying in 1s...`);
             clearInterval(pingInterval);
             
-            // 毫秒级重连机制，确保机器人不间断在线
+            // Millisecond level reconnection mechanism to ensure 24/7 online
             setTimeout(() => {
                 startEventSubscription();
             }, 1000);
         };
     }
 
-    // 启动极速实时监听
+    // Start ultra-fast real-time listening
     try {
         startEventSubscription();
     } catch (err) {
-        console.error("❌ 启动 Websocket 订阅失败:", err);
+        console.error("❌ Failed to start WebSocket subscription:", err);
     }
 
-    // 保持进程存活
+    // Keep process alive
     await new Promise(() => {});
 }
 
@@ -132,7 +132,7 @@ export async function initGasCoinFromEnv(): Promise<GasCoinRef | null> {
     if (!gasObjectId) return null;
 
     try {
-        console.log(`📡 正在根据环境变量配置的 GAS_OBJECT [${gasObjectId}] 进行初始化...`);
+        console.log(`📡 Initializing with GAS_OBJECT [${gasObjectId}] from env...`);
         const objResponse = await client.getObject({
             id: gasObjectId
         });
@@ -143,11 +143,11 @@ export async function initGasCoinFromEnv(): Promise<GasCoinRef | null> {
                 version: objResponse.data.version,
                 digest: objResponse.data.digest,
             };
-            console.log(`✅ 成功初始化指定的 GAS_OBJECT 缓存！`);
+            console.log(`✅ Successfully initialized specified GAS_OBJECT cache!`);
             return cachedGasCoin;
         }
     } catch (e) {
-        console.error("❌ 指定的 GAS_OBJECT 初始化失败:", e);
+        console.error("❌ Initialization of specified GAS_OBJECT failed:", e);
     }
     return null;
 }
