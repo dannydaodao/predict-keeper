@@ -52,7 +52,7 @@ export default function App() {
 
     const interval = setInterval(() => {
       fetchLastestOracle();
-    }, 2000); // 2000 ms = 2 seconds
+    }, 3000); // 2000 ms = 2 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -372,7 +372,7 @@ export default function App() {
                   marginTop: '15px'
                 }}
               >
-                {minting ? 'Sending Transaction...' : '🚀 Send Mint Transaction'}
+                {minting ? 'Sending Transaction...' : 'Send Mint Transaction'}
               </button>
             </div>
           ) : (

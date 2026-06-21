@@ -1,7 +1,7 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { getClient, getSigner } from './utils';
 import { CONFIG } from './config';
-import { RedeemablePosition } from './scanner';
+import type { RedeemablePosition } from './scanner';
 import { log } from 'console';
 
 const client = getClient(CONFIG.NETWORK);
