@@ -54,7 +54,7 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
         tx.setGasPayment([cachedGasCoin]);
     }
     tx.setGasPrice(referenceGasPrice); // Explicitly set gas price to avoid SDK querying RPC
-    tx.setGasBudget(10000000n); // Explicitly set a safe gas budget (e.g., 0.01 SUI)
+    tx.setGasBudget(100000000n); // Explicitly set a safe gas budget (e.g., 0.1 SUI)
 
     try {
         const signer = getSigner();
@@ -64,24 +64,34 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
             options: { showEffects: true },
         });
 
+        // 无论成功还是失败，只要有 gasObject 返回，就立即用它更新本地缓存
+        // 这样可以 100% 避开 RPC 的最终一致性延迟，拿到绝对正确的最新版本
+        const mutatedGas = result.effects?.gasObject;
+        if (mutatedGas) {
+            cachedGasCoin = {
+                objectId: mutatedGas.reference.objectId,
+                version: mutatedGas.reference.version,
+                digest: mutatedGas.reference.digest
+            };
+        }
+
         if (result.effects?.status.status === 'success') {
-            const mutatedGas = result.effects.gasObject;
-            if (mutatedGas) {
-                cachedGasCoin = {
-                    objectId: mutatedGas.reference.objectId,
-                    version: mutatedGas.reference.version,
-                    digest: mutatedGas.reference.digest
-                };
-            }
             console.log(`✅ Batch redemption succeeded! TX Digest: ${result.digest}`);
         } else {
             console.error(`❌ Redemption failed:`, result.effects?.status.error);
-            cachedGasCoin = null;
-            refreshGasCoinCache();
+            // 如果是因为 InsufficientGas 失败，说明是预算问题，这里无需设 cachedGasCoin 为 null，它已经在上面被更新为链上最新版本了
         }
     } catch (error) {
         console.error("Exception occurred during TX execution:", error);
-        refreshGasCoinCache();
+        
+        // 1. 立即降级：清空本地缓存，保证下一笔可能在几十毫秒内触发的交易能降级走 SDK 自动配 Gas 逻辑，绝不卡死
+        cachedGasCoin = null;
+        
+        // 2. 延迟 1 秒后异步刷新：给 Sui RPC 节点充裕的时间完成数据同步和索引
+        setTimeout(() => {
+            console.log("🔄 [Lazy Recovery] 1s delay passed, refreshing Gas Cache to restore fast-path...");
+            refreshGasCoinCache().catch(err => console.error("Failed to lazy refresh Gas cache:", err));
+        }, 5000);
     }
 }
 
@@ -120,6 +130,9 @@ export async function refreshGasCoinCache(): Promise<GasCoinRef | null> {
             .sort((a, b) => Number(BigInt(b.balance) - BigInt(a.balance)))[0]; // sorted descending, take largest
 
         const chosenCoin = suitableCoin || coinsResult.data[0]; // if none > 0.1 SUI, take the first one
+        if (!chosenCoin) {
+            throw new Error(`❌ No SUI coin found`);
+        }
         
         cachedGasCoin = {
             objectId: chosenCoin.coinObjectId,
