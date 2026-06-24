@@ -81,6 +81,7 @@ export async function executeRedeemBatch(positions: RedeemablePosition[]) {
         }
     } catch (error) {
         console.error("Exception occurred during TX execution:", error);
+        refreshGasCoinCache();
     }
 }
 

@@ -113,11 +113,6 @@ export async function findRedeemablePositions(): Promise<RedeemablePosition[]> {
                     console.log(`   💨 [Loss Skipped] Account ${record.manager_id} lost. (Strike: ${strikePrice}, UP: ${isUp}) Skipping redemption.`);
                 }
             }
-            if(redeemablePositions.length > 0){
-                console.warn("⚠️ Too many redeemable positions found, only locking the top 100, suggest accelerating execution speed!");
-                break;
-            }
-
         }
 
     } catch (error) {
